@@ -1,0 +1,7 @@
+global : u32 : 12;
+
+main :: fn () void {
+	x : u32 = 2;
+	y : u32 = 12;
+	y = x + y;
+};
