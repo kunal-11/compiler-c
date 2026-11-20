@@ -78,3 +78,4 @@ operator_binding_power(Operator op) {
 
 #include "intern_pool.c"
 #include "parser.c"
+#include "uir.c"

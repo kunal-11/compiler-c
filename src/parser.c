@@ -134,20 +134,6 @@ parser_recover(ParserState *state, b32 consume_end) {
 }
 
 internal AstNodeId
-parser_parse_identifier(ParserState *state) {
-    Token token = parser_peek_token(state, 0);
-    debug_assert(token.type == Token_Identifier, STR_LIT("parse identifier invalid token"));
-    parser_advance_token(state);
-    Buffer name = buffer_slice(state->file_contents, token.begin, token.end);
-    AstNode node = {
-        .pos = token.begin,
-        .type = Ast_Identifier,
-        .identifier = intern_pool_get_id(state->intern_pool, name),
-    };
-    return ast_alloc_node(state->ast, node);
-}
-
-internal AstNodeId
 parser_parse_expr(ParserState *, u32);
 
 internal AstNodeId
@@ -320,38 +306,37 @@ parser_parse_fn_type_or_lit(ParserState *state) {
     }
     return type;
 }
-
-internal AstNodeId
-parser_parse_numlit(ParserState *state) {
-    Token token = parser_peek_token(state, 0);
-    debug_assert(token.type == Token_NumLit, STR_LIT("parse numlit invalid token"));
-    parser_advance_token(state);
-    AstNode node = {
-        .pos = token.begin,
-        .type = Ast_NumLit,
-    };
-    return ast_alloc_node(state->ast, node);
-}
-
 internal AstNodeId
 parser_parse_expr(ParserState *state, u32 parent_binding_pow) {
     AstNodeId result;
-    switch (parser_peek_token(state, 0).type) {
+    Token token = parser_peek_token(state, 0);
+    switch (token.type) {
         case Token_Identifier: {
-            result = parser_parse_identifier(state);
+            parser_advance_token(state);
+            Buffer name = buffer_slice(state->file_contents, token.begin, token.end);
+            AstNode node = {
+                .pos = token.begin,
+                .type = Ast_Identifier,
+                .identifier = intern_pool_get_id(state->intern_pool, name),
+            };
+            result = ast_alloc_node(state->ast, node);
+        } break;
+        case Token_NumLit: {
+            parser_advance_token(state);
+            AstNode node = {
+                .pos = token.begin,
+                .type = Ast_NumLit,
+            };
+            result = ast_alloc_node(state->ast, node);
         } break;
         case Token_KeyFn: {
             result = parser_parse_fn_type_or_lit(state);
         } break;
-        case Token_NumLit: {
-            result = parser_parse_numlit(state);
-        } break;
 
         // prefix ops
         case Token_Minus: {
-            Token op_token = parser_peek_token(state, 0);
             Operator op = Op_Invalid;
-            switch (op_token.type) {
+            switch (token.type) {
                 case Token_Minus: {
                     op = Op_Negate;
                 } break;
@@ -365,7 +350,7 @@ parser_parse_expr(ParserState *state, u32 parent_binding_pow) {
                 // ignore the operator with a message
                 Message msg = {
                     .file = state->file_id,
-                    .pos = op_token.begin,
+                    .pos = token.begin,
                     .severity = Severity_Error,
                     .type = Message_UnexpectedOperator,
                 };
@@ -378,7 +363,7 @@ parser_parse_expr(ParserState *state, u32 parent_binding_pow) {
 
                 AstNodeId expr = parser_parse_expr(state, binding_power);
                 AstNode node = {
-                    .pos = op_token.begin,
+                    .pos = token.begin,
                     .type = Ast_PrefixOp,
                     .prefix_op = {.op = op, .expr = expr},
                 };

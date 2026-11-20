@@ -181,7 +181,7 @@ internal AstNode
 ast_get_node(Ast *ast, AstNodeId id) {
     debug_assert(id.id != AST_NULL_ID.id, STR_LIT("ast get null node"));
     debug_assert(id.id != AST_POISON_ID.id, STR_LIT("ast get poison node"));
-    debug_assert(id.id < ast->node_count, STR_LIT("ast node OOB"));
+    debug_assert(id.id < ast->next_node, STR_LIT("ast node OOB"));
     return ast->nodes[id.id];
 }
 
