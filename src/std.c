@@ -132,10 +132,13 @@ arena_push_bytes(Arena *arena, usize len, usize align) {
 #define arena_push_struct(arena, Type)                                                            \
     ((Type *)arena_push_bytes((arena), sizeof(Type), __alignof__(Type)).bytes)
 
-#define arena_peek_struct(arena, Type) ((Type *)arena_peek(arena, __alignof__(Type)))
-
 #define arena_push_array(arena, Type, len)                                                        \
     ((Type *)arena_push_bytes((arena), sizeof(Type) * (len), __alignof__(Type)).bytes)
+
+#define arena_peek_struct(arena, Type) ((Type *)arena_peek(arena, __alignof__(Type)))
+
+#define arena_list_count(arena, start)                                                            \
+    (((arena)->used - (usize)((u8 *)(start) - (arena)->bytes)) / sizeof(*(start)))
 
 internal Arena
 sub_arena(Arena *arena, usize size) {

@@ -1,4 +1,18 @@
 #include "std.c"
+#include "intern_pool.c"
+
+typedef enum {
+    Op_Invalid,
+
+    Op_Add,
+    Op_Subtract,
+
+    Op_Mul,
+    Op_Div,
+    Op_Mod,
+
+    Op_Negate,
+} Operator;
 
 #define FILE_NULL_ID ((FileId){.id = 0})
 typedef struct {
@@ -21,6 +35,12 @@ typedef enum {
     Message_UnexpectedOperator,
     Message_ExpectedDeclType,
     Message_ExpectedExpression,
+    Message_ExpectedAddressable,
+
+    Message_RedeclaredName,
+    Message_RuntimeClosure,
+    Message_LvalueInvalid,
+    Message_LvalueConstant,
 } MessageType;
 
 typedef struct {
@@ -28,54 +48,12 @@ typedef struct {
     MessageType type;
     union {
         u32 expected_token;
+        u32 original_declaration;
     };
 
     FileId file;
     u32 pos;
 } Message;
 
-typedef enum {
-    Op_Invalid,
-
-    Op_Add,
-    Op_Subtract,
-
-    Op_Mul,
-    Op_Div,
-    Op_Mod,
-
-    Op_Negate,
-} Operator;
-
-#define MIN_BINDING_POWER 0
-#define TYPE_BINDING_POWER 1
-
-internal u32
-operator_binding_power(Operator op) {
-    u32 result = 0;
-    switch (op) {
-        case Op_Negate: {
-            result = 4;
-        } break;
-
-        case Op_Mul:
-        case Op_Div:
-        case Op_Mod: {
-            result = 3;
-        } break;
-
-        case Op_Add:
-        case Op_Subtract: {
-            result = 2;
-        } break;
-
-        case Op_Invalid: {
-            result = 0;
-        } break;
-    }
-    return result;
-}
-
-#include "intern_pool.c"
 #include "parser.c"
-#include "uir.c"
+#include "uir_lower.c"

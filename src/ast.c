@@ -5,10 +5,15 @@ typedef struct {
     u32 id;
 } AstNodeId;
 
-// extra offset - AstFnArg[arg_count]
 typedef struct {
-    u32 extra_offset;
+    u32 id;
+} AstExtraId;
+
+// extra offset - list of FnArg node ids
+typedef struct {
+    AstExtraId first_arg;
     u32 arg_count;
+
     AstNodeId ret_type;
 } AstFnType;
 
@@ -18,7 +23,7 @@ typedef struct {
 } AstFnArg;
 
 typedef struct {
-    u32 extra_offset;
+    AstExtraId first;
     u32 count;
 } AstBlock;
 
@@ -43,11 +48,11 @@ typedef struct {
 typedef struct {
     AstNodeId lhs;
     AstNodeId rhs;
-} AstAssignment;
+} AstAssign;
 
 typedef struct {
     Operator op;
-    AstNodeId expr;
+    AstNodeId value;
 } AstPrefixOp;
 
 typedef enum {
@@ -55,8 +60,8 @@ typedef enum {
     Ast_VarDecl,
 
     Ast_Identifier,
-
     Ast_FnType,
+    Ast_FnArg,
 
     Ast_PrefixOp,
     Ast_InfixOp,
@@ -78,10 +83,11 @@ typedef struct {
         InternId identifier;
 
         AstFnType fn_type;
+        AstFnArg fn_arg;
 
         AstPrefixOp prefix_op;
         AstInfixOp infix_op;
-        AstAssignment assignment;
+        AstAssign assign;
 
         AstFnLit fn_lit;
         b32 bool_lit;
@@ -125,56 +131,50 @@ ast_alloc_node(Ast *ast, AstNode node) {
 }
 
 internal AstNodeId
-ast_alloc_fn_type(Ast *ast, u32 pos, AstFnArg *args, u32 args_len, AstNodeId ret_type) {
-    debug_assert(ast->next_extra + 2 * args_len < ast->extra_count, STR_LIT("ast extras OOM"));
-    u32 offset = ast->next_extra;
+ast_alloc_fn_type(Ast *ast, u32 pos, AstNodeId *args, u32 args_len, AstNodeId ret_type) {
+    debug_assert(ast->next_extra + args_len <= ast->extra_count, STR_LIT("ast extras OOM"));
+    AstExtraId offset = {.id = ast->next_extra};
     for (u32 i = 0; i < args_len; i += 1) {
-        ast->extras[ast->next_extra] = args[i].name.id;
-        ast->extras[ast->next_extra + 1] = args[i].type.id;
-        ast->next_extra += 2;
+        ast->extras[ast->next_extra + i] = args[i].id;
     }
+    ast->next_extra += args_len;
     AstNode node = {
         .pos = pos,
         .type = Ast_FnType,
-        .fn_type = {.extra_offset = offset, .arg_count = args_len, .ret_type = ret_type},
+        .fn_type = {.first_arg = offset, .arg_count = args_len, .ret_type = ret_type},
     };
     return ast_alloc_node(ast, node);
 }
 
-internal AstFnArg
-ast_get_fn_arg(Ast *ast, AstFnType fn_type, u32 idx) {
-    debug_assert(fn_type.extra_offset < ast->next_extra, STR_LIT("ast extra offset OOB"));
+internal AstNodeId
+ast_get_fn_arg_id(Ast *ast, AstFnType fn_type, u32 idx) {
+    debug_assert(fn_type.first_arg.id + fn_type.arg_count <= ast->next_extra,
+                 STR_LIT("ast fn arg extra offset OOB"));
     debug_assert(idx < fn_type.arg_count, STR_LIT("fn arg idx OOB"));
-    u32 *extra = ast->extras + fn_type.extra_offset + idx * 2;
-    AstFnArg result = {
-        .name = {.id = extra[0]},
-        .type = {.id = extra[1]},
-    };
-    return result;
+    return (AstNodeId){.id = ast->extras[fn_type.first_arg.id + idx]};
 }
 
 internal AstNodeId
 ast_alloc_fn_lit(Ast *ast, u32 pos, AstNodeId type, AstNodeId *body, u32 body_len) {
-    debug_assert(ast->next_extra + body_len < ast->extra_count, STR_LIT("ast extras OOM"));
-    u32 offset = ast->next_extra;
+    debug_assert(ast->next_extra + body_len <= ast->extra_count, STR_LIT("ast extras OOM"));
+    AstExtraId offset = {.id = ast->next_extra};
     for (u32 i = 0; i < body_len; i += 1) {
-        ast->extras[ast->next_extra] = body[i].id;
-        ast->next_extra += 1;
+        ast->extras[ast->next_extra + i] = body[i].id;
     }
+    ast->next_extra += body_len;
     AstNode node = {
         .pos = pos,
         .type = Ast_FnLit,
-        .fn_lit = {.type = type, .body = {.extra_offset = offset, .count = body_len}},
+        .fn_lit = {.type = type, .body = {.first = offset, .count = body_len}},
     };
     return ast_alloc_node(ast, node);
 }
 
 internal AstNodeId
 ast_get_block_node(Ast *ast, AstBlock block, u32 idx) {
-    debug_assert(block.extra_offset < ast->next_extra, STR_LIT("ast extra offset OOB"));
+    debug_assert(block.first.id + block.count <= ast->next_extra, STR_LIT("ast extra offset OOB"));
     debug_assert(idx < block.count, STR_LIT("block idx OOB"));
-    u32 *extra = ast->extras + block.extra_offset + idx;
-    return (AstNodeId){.id = extra[0]};
+    return (AstNodeId){.id = ast->extras[block.first.id + idx]};
 }
 
 internal AstNode
@@ -239,15 +239,21 @@ ast_print_tree(Ast *ast, InternPool *intern_pool, AstNodeId node_id, u32 prefix_
         case Ast_FnType: {
             printf("fn_type\n");
             for (u32 i = 0; i < node.fn_type.arg_count; i += 1) {
-                AstFnArg arg = ast_get_fn_arg(ast, node.fn_type, i);
-                ast_print_tree(ast, intern_pool, arg.type, child_prefix_len, false);
+                AstNodeId arg_node = ast_get_fn_arg_id(ast, node.fn_type, i);
+                ast_print_tree(ast, intern_pool, arg_node, child_prefix_len, false);
             }
             ast_print_tree(ast, intern_pool, node.fn_type.ret_type, child_prefix_len, true);
         } break;
 
+        case Ast_FnArg: {
+            Buffer arg_name = intern_pool_get_string(intern_pool, node.fn_arg.name);
+            printf("fn_arg: %.*s\n", (int)arg_name.len, arg_name.bytes);
+            ast_print_tree(ast, intern_pool, node.fn_arg.type, child_prefix_len, true);
+        } break;
+
         case Ast_PrefixOp: {
             printf("prefix_op: %d\n", node.prefix_op.op);
-            ast_print_tree(ast, intern_pool, node.prefix_op.expr, child_prefix_len, true);
+            ast_print_tree(ast, intern_pool, node.prefix_op.value, child_prefix_len, true);
         } break;
 
         case Ast_InfixOp: {
@@ -258,13 +264,14 @@ ast_print_tree(Ast *ast, InternPool *intern_pool, AstNodeId node_id, u32 prefix_
 
         case Ast_Assign: {
             printf("assignment\n");
-            ast_print_tree(ast, intern_pool, node.assignment.lhs, child_prefix_len, false);
-            ast_print_tree(ast, intern_pool, node.assignment.rhs, child_prefix_len, true);
+            ast_print_tree(ast, intern_pool, node.assign.lhs, child_prefix_len, false);
+            ast_print_tree(ast, intern_pool, node.assign.rhs, child_prefix_len, true);
         } break;
 
         case Ast_FnLit: {
             printf("fn_lit\n");
-            ast_print_tree(ast, intern_pool, node.fn_lit.type, child_prefix_len, false);
+            ast_print_tree(ast, intern_pool, node.fn_lit.type, child_prefix_len,
+                           node.fn_lit.body.count == 0);
             for (u32 i = 0; i < node.fn_lit.body.count; i += 1) {
                 AstNodeId block_node = ast_get_block_node(ast, node.fn_lit.body, i);
                 ast_print_tree(ast, intern_pool, block_node, child_prefix_len,

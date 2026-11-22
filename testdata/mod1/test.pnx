@@ -5,3 +5,7 @@ main :: fn () void {
 	y : u32 = 12;
 	y = x + y;
 };
+
+proc :: fn (a1: u32, a2: u32, a3: u64, a4: bool) i32 {
+	a3 = a1 + a2;
+};

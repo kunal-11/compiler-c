@@ -1,6 +1,35 @@
 #include "lexer.c"
 #include "ast.c"
 
+#define MIN_BINDING_POWER 0
+#define TYPE_BINDING_POWER 3
+
+internal u32
+operator_binding_power(Operator op) {
+    u32 result = 0;
+    switch (op) {
+        case Op_Negate: {
+            result = 3;
+        } break;
+
+        case Op_Mul:
+        case Op_Div:
+        case Op_Mod: {
+            result = 2;
+        } break;
+
+        case Op_Add:
+        case Op_Subtract: {
+            result = 1;
+        } break;
+
+        case Op_Invalid: {
+            result = 0;
+        } break;
+    }
+    return result;
+}
+
 #define PARSER_LOOKAHEAD 2
 #define PARSER_MAX_MESSAGE_COUNT 1024
 #define PARSER_SCRATCH_SIZE (64 * KB)
@@ -79,7 +108,7 @@ parser_expect_token(ParserState *state, TokenType type) {
     if (token.type != type) {
         Message msg = {
             .file = state->file_id,
-            .pos = state->file_cursor,
+            .pos = token.begin,
             .severity = Severity_Error,
             .type = Message_UnexpectedToken,
             .expected_token = type,
@@ -149,8 +178,7 @@ parser_parse_fn_type(ParserState *state) {
         goto cleanup;
     }
 
-    AstFnArg *args = arena_peek_struct(&state->scratch, AstFnArg);
-    u32 arg_count = 0;
+    AstNodeId *args = arena_peek_struct(&state->scratch, AstNodeId);
     while (parser_peek_token(state, 0).type == Token_Identifier) {
         Token identifier = parser_peek_token(state, 0);
         parser_advance_token(state);
@@ -162,9 +190,13 @@ parser_parse_fn_type(ParserState *state) {
 
         AstNodeId type = parser_parse_expr(state, TYPE_BINDING_POWER);
         InternId intern_id = intern_pool_get_id(state->intern_pool, name);
-        AstFnArg *arg = arena_push_struct(&state->scratch, AstFnArg);
-        *arg = (AstFnArg){.name = intern_id, .type = type};
-        arg_count += 1;
+
+        AstNode arg_node = {
+            .pos = identifier.begin,
+            .type = Ast_FnArg,
+            .fn_arg = {.name = intern_id, .type = type},
+        };
+        *arena_push_struct(&state->scratch, AstNodeId) = ast_alloc_node(state->ast, arg_node);
 
         if (parser_peek_token(state, 0).type == Token_Comma) {
             parser_advance_token(state);
@@ -177,7 +209,8 @@ parser_parse_fn_type(ParserState *state) {
     }
 
     AstNodeId ret_type = parser_parse_expr(state, TYPE_BINDING_POWER);
-    result = ast_alloc_fn_type(state->ast, fn_key.begin, args, arg_count, ret_type);
+    result = ast_alloc_fn_type(state->ast, fn_key.begin, args,
+                               (u32)arena_list_count(&state->scratch, args), ret_type);
 cleanup:
     flusher_flush(flusher);
     return result;
@@ -260,7 +293,7 @@ parser_parse_statement(ParserState *state) {
         AstNode assign_node = {
             .pos = token_eq.begin,
             .type = Ast_Assign,
-            .assignment = {.lhs = result, .rhs = rhs},
+            .assign = {.lhs = result, .rhs = rhs},
         };
         result = ast_alloc_node(state->ast, assign_node);
     }
@@ -282,7 +315,6 @@ parser_parse_fn_type_or_lit(ParserState *state) {
         Flusher flusher = flusher_init(&state->scratch);
 
         AstNodeId *body = arena_peek_struct(&state->scratch, AstNodeId);
-        u32 block_count = 0;
         b32 block_end = false;
         while (!block_end) {
             switch (parser_peek_token(state, 0).type) {
@@ -294,13 +326,12 @@ parser_parse_fn_type_or_lit(ParserState *state) {
                 default: {
                     AstNodeId *slot = arena_push_struct(&state->scratch, AstNodeId);
                     *slot = parser_parse_statement(state);
-                    block_count += 1;
                 } break;
             }
         }
         parser_expect_token(state, Token_CloseBrace);
-
-        AstNodeId lit = ast_alloc_fn_lit(state->ast, fn_key.begin, type, body, block_count);
+        AstNodeId lit = ast_alloc_fn_lit(state->ast, fn_key.begin, type, body,
+                                         (u32)arena_list_count(&state->scratch, body));
         flusher_flush(flusher);
         return lit;
     }
@@ -360,12 +391,11 @@ parser_parse_expr(ParserState *state, u32 parent_binding_pow) {
                 result = parser_parse_expr(state, binding_power);
             } else {
                 parser_advance_token(state);
-
-                AstNodeId expr = parser_parse_expr(state, binding_power);
+                AstNodeId value = parser_parse_expr(state, binding_power);
                 AstNode node = {
                     .pos = token.begin,
                     .type = Ast_PrefixOp,
-                    .prefix_op = {.op = op, .expr = expr},
+                    .prefix_op = {.op = op, .value = value},
                 };
                 result = ast_alloc_node(state->ast, node);
             }

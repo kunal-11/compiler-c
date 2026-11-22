@@ -32,7 +32,7 @@ cleanup:
     return result;
 }
 
-#define MEM_SIZE (1 * MB)
+#define MEM_SIZE (32 * MB)
 
 int
 main(void) {
@@ -56,6 +56,11 @@ main(void) {
     while (parser_peek_token(parser, 0).type != Token_Eof) {
         AstNodeId top_decl = parser_parse_toplevel(parser);
         ast_print_tree(parser->ast, intern_pool, top_decl, 0, true);
+
+        UirLowerState *lowerer = uir_lower_init(&arena, parser->ast, file_id);
+        UirInstId uir_inst = uir_lower_global(lowerer, top_decl);
+        uir_print(lowerer->uir, intern_pool, uir_inst, 0);
+        printf("\n");
     }
 cleanup:
     if (memory != 0) {
