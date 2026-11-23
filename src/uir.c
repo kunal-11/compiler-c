@@ -225,7 +225,7 @@ uir_print(Uir *uir, InternPool *intern_pool, UirInstId inst_id, u32 indent) {
         } break;
 
         case Uir_FnArg: {
-            printf("fn_arg %d\n", inst.fn_arg_idx);
+            printf("fn_arg #%d\n", inst.fn_arg_idx);
         } break;
 
         case Uir_FnType: {
@@ -258,22 +258,25 @@ uir_print(Uir *uir, InternPool *intern_pool, UirInstId inst_id, u32 indent) {
         } break;
 
         case Uir_PrefixOp: {
-            printf("prefix_op %d %%%d\n", inst.prefix_op.op, inst.prefix_op.value.id);
+            printf("prefix_op ");
+            print_operator(inst.prefix_op.op);
+            printf(" %%%d\n", inst.prefix_op.value.id);
         } break;
 
         case Uir_InfixOp: {
-            printf("infix_op %%%d %d %%%d\n", inst.infix_op.lhs.id, inst.infix_op.op,
-                   inst.infix_op.rhs.id);
+            printf("infix_op %%%d ", inst.infix_op.lhs.id);
+            print_operator(inst.infix_op.op);
+            printf(" %%%d\n", inst.infix_op.rhs.id);
         } break;
 
         case Uir_GlobalValue: {
             Buffer name = intern_pool_get_string(intern_pool, inst.global);
-            printf("global_value %.*s\n", (int)name.len, name.bytes);
+            printf("global_value #%.*s\n", (int)name.len, name.bytes);
         } break;
 
         case Uir_GlobalPointer: {
             Buffer name = intern_pool_get_string(intern_pool, inst.global);
-            printf("global_ptr %.*s\n", (int)name.len, name.bytes);
+            printf("global_ptr #%.*s\n", (int)name.len, name.bytes);
         } break;
 
         case Uir_Alloc: {

@@ -14,6 +14,36 @@ typedef enum {
     Op_Negate,
 } Operator;
 
+internal void
+print_operator(Operator op) {
+    switch (op) {
+        case Op_Add: {
+            printf("+");
+        } break;
+
+        case Op_Negate:
+        case Op_Subtract: {
+            printf("-");
+        } break;
+
+        case Op_Mul: {
+            printf("*");
+        } break;
+
+        case Op_Div: {
+            printf("/");
+        } break;
+
+        case Op_Mod: {
+            printf("%%");
+        } break;
+
+        case Op_Invalid: {
+            UNREACHABLE;
+        } break;
+    }
+}
+
 #define FILE_NULL_ID ((FileId){.id = 0})
 typedef struct {
     u32 id;
@@ -57,3 +87,4 @@ typedef struct {
 
 #include "parser.c"
 #include "uir_lower.c"
+#include "analysis.c"

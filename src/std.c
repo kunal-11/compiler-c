@@ -79,6 +79,8 @@ buffer_eql(Buffer buf1, Buffer buf2) {
     return true;
 }
 
+#define to_buffer(val) ((Buffer){.bytes = (u8 *)&(val), .len = sizeof(val)})
+
 #define KB (1 << 10)
 #define MB (1 << 20)
 #define GB (1 << 30)

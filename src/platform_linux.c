@@ -41,26 +41,34 @@ main(void) {
         debug_log_error(STR_LIT("memory alloc failed"));
         goto cleanup;
     }
-
     Arena arena = {.bytes = memory, .max_len = MEM_SIZE};
+
+    InternPool *intern_pool = intern_pool_init(&arena);
+    DeclTable *decl_table = decl_table_init(&arena);
+    AnalysisState *analysis = analysis_state_init(&arena, intern_pool, decl_table);
 
     Buffer file = read_full_file(&arena, test_path);
     if (file.bytes == 0) {
         debug_log_error(STR_LIT("file read failed"));
         goto cleanup;
     }
-    InternPool *intern_pool = intern_pool_init(&arena);
     FileId file_id = {.id = 1};
-    ParserState *parser = parser_init(&arena, file_id, file, intern_pool);
 
+    ParserState *parser = parser_init(&arena, file_id, file, intern_pool);
     while (parser_peek_token(parser, 0).type != Token_Eof) {
         AstNodeId top_decl = parser_parse_toplevel(parser);
         ast_print_tree(parser->ast, intern_pool, top_decl, 0, true);
 
-        UirLowerState *lowerer = uir_lower_init(&arena, parser->ast, file_id);
-        UirInstId uir_inst = uir_lower_global(lowerer, top_decl);
-        uir_print(lowerer->uir, intern_pool, uir_inst, 0);
+        UirLowerState *uir_lower = uir_lower_init(&arena, parser->ast, file_id);
+        UirInstId uir_inst = uir_lower_global(uir_lower, top_decl);
+        uir_print(uir_lower->uir, intern_pool, uir_inst, 0);
         printf("\n");
+
+        DeclId decl_id = decl_table_alloc(decl_table, file_id, uir_lower->uir, uir_inst);
+        analysis_queue_decl(analysis, decl_id);
+    }
+
+    while (analysis_process_entry(analysis)) {
     }
 cleanup:
     if (memory != 0) {

@@ -252,12 +252,16 @@ ast_print_tree(Ast *ast, InternPool *intern_pool, AstNodeId node_id, u32 prefix_
         } break;
 
         case Ast_PrefixOp: {
-            printf("prefix_op: %d\n", node.prefix_op.op);
+            printf("prefix_op: ");
+            print_operator(node.prefix_op.op);
+            printf("\n");
             ast_print_tree(ast, intern_pool, node.prefix_op.value, child_prefix_len, true);
         } break;
 
         case Ast_InfixOp: {
-            printf("infix_op: %d\n", node.infix_op.op);
+            printf("prefix_op: ");
+            print_operator(node.infix_op.op);
+            printf("\n");
             ast_print_tree(ast, intern_pool, node.infix_op.lhs, child_prefix_len, false);
             ast_print_tree(ast, intern_pool, node.infix_op.rhs, child_prefix_len, true);
         } break;
