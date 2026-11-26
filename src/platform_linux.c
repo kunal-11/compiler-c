@@ -47,6 +47,8 @@ main(void) {
     InternPool *intern_pool = intern_pool_init(&arena);
     TypePool *type_pool = type_pool_init(&arena);
     DeclTable *decl_table = decl_table_init(&arena);
+    FnTable *fn_table = fn_table_init(&arena);
+
     Namespace *ns = namespace_init(&arena);
     // AnalysisState *analysis = analysis_state_init(&arena, intern_pool, decl_table);
 
@@ -66,12 +68,20 @@ main(void) {
         UirInstId uir_inst = uir_lower_global(uir_lower, top_decl);
         uir_print(uir_lower->uir, intern_pool, uir_inst, 0);
 
-        EvalState *eval = eval_state_init(&arena, intern_pool, type_pool, decl_table, ns,
+        EvalState *eval = eval_state_init(&arena, intern_pool, type_pool, decl_table, fn_table, ns,
                                           uir_lower->uir, file_id);
         EvalValue value = eval_inst(eval, uir_inst, EvalMode_Exec);
 
-        printf("eval: %d\n\n", value.format);
+        printf("\nEval:\n");
+        for (u32 i = 2; i < eval->uir->next_inst; i += 1) {
+            printf("%%%d: ", i);
+            eval_print_value(type_pool, eval->values[i]);
+            printf("\n");
+        }
 
+        printf("\nResult: ");
+        eval_print_value(type_pool, value);
+        printf("\n\n");
         // DeclId decl_id = decl_table_alloc(decl_table, file_id, uir_lower->uir, uir_inst);
         // analysis_queue_decl(analysis, decl_id);
     }

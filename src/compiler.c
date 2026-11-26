@@ -93,5 +93,6 @@ typedef struct {
 
 #include "parser.c"
 #include "uir_lower.c"
+#include "type_pool.c"
 #include "namespace.c"
 #include "analysis.c"

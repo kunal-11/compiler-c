@@ -20,7 +20,8 @@ typedef struct {
         i64 integer;
         b32 boolean;
         TypeId type_val;
-        // TODO: fn lit, runtime inst
+        FnId fn_lit;
+        // TODO: runtime inst
     };
 } EvalValue;
 
@@ -58,6 +59,7 @@ typedef struct {
     TypePool *type_pool;
     InternPool *intern_pool;
     DeclTable *decl_table;
+    FnTable *fn_table;
 
     Namespace *ns;
     Uir *uir;
@@ -73,7 +75,7 @@ typedef struct {
 
 internal EvalState *
 eval_state_init(Arena *arena, InternPool *intern_pool, TypePool *type_pool, DeclTable *decl_table,
-                Namespace *ns, Uir *uir, FileId file_id) {
+                FnTable *fn_table, Namespace *ns, Uir *uir, FileId file_id) {
     EvalState *state = arena_push_struct(arena, EvalState);
     state->uir = uir;
     state->values = arena_push_array(arena, EvalValue, uir->next_inst);
@@ -87,6 +89,7 @@ eval_state_init(Arena *arena, InternPool *intern_pool, TypePool *type_pool, Decl
     state->type_pool = type_pool;
     state->intern_pool = intern_pool;
     state->decl_table = decl_table;
+    state->fn_table = fn_table;
 
     state->ns = ns;
     state->file = file_id;
@@ -364,9 +367,37 @@ eval_inst(EvalState *state, UirInstId inst_id, EvalMode mode) {
             result = eval_comp_block(state, inst_id);
         } break;
 
-        case Uir_FnArg:
+        case Uir_FnArg: {
+        } break;
+
         case Uir_FnLit: {
-            // TODO:
+            switch (mode) {
+                case EvalMode_Emit: {
+                    Message msg = {
+                        .file = state->file,
+                        .pos = inst.pos,
+                        .severity = Severity_Error,
+                        .type = Message_TypeInRuntime,
+                    };
+                    eval_add_message(state, msg);
+                } break;
+
+                case EvalMode_Exec: {
+                    TypeId fn_type;
+                    if (!eval_expect_type(state, inst.fn_lit.fn_type, &fn_type)) {
+                        debug_assert(false, STR_LIT("fn lit invalid type"));
+                    }
+                    debug_assert(type_pool_get_info(state->type_pool, fn_type).format ==
+                                     TypeFormat_Fn,
+                                 STR_LIT("fn lit invalid type"));
+                    FnId fn_id = fn_table_alloc(state->fn_table, fn_type);
+                    result = (EvalValue){
+                        .format = EvalValue_FnLit,
+                        .type = fn_type,
+                        .fn_lit = fn_id,
+                    };
+                } break;
+            }
         } break;
 
         case Uir_Coerce: {

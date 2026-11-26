@@ -57,6 +57,59 @@ decl_table_get_decl(DeclTable *table, DeclId id) {
     return table->decls + id.id;
 }
 
+typedef enum {
+    FnStatus_Ready,
+    FnStatus_Queued,
+    FnStatus_InProgress,
+    FnStatus_Done,
+} FnStatus;
+
+typedef struct {
+    TypeId type;
+    FnStatus status;
+} Fn;
+
+typedef struct {
+    u32 id;
+} FnId;
+#define FN_NULL ((FnId){.id = 0})
+
+typedef struct {
+    Fn *fns;
+    u32 count;
+    u32 capacity;
+} FnTable;
+
+#define FN_TABLE_CAPACITY 2048
+
+internal FnTable *
+fn_table_init(Arena *arena) {
+    FnTable *table = arena_push_struct(arena, FnTable);
+    table->fns = arena_push_array(arena, Fn, DECL_TABLE_CAPACITY);
+    table->capacity = DECL_TABLE_CAPACITY;
+    table->count = 1;
+    return table;
+}
+
+internal FnId
+fn_table_alloc(FnTable *table, TypeId type) {
+    debug_assert(table->count < table->capacity, STR_LIT("fn table OOM"));
+    FnId result = {.id = table->count};
+    table->count += 1;
+    table->fns[result.id] = (Fn){
+        .type = type,
+        .status = FnStatus_Ready,
+    };
+    return result;
+}
+
+internal Fn *
+fn_table_get_fn(FnTable *table, FnId id) {
+    debug_assert(id.id != FN_NULL.id, STR_LIT("fn table get null id"));
+    debug_assert(id.id < table->count, STR_LIT("fn table id OOB"));
+    return table->fns + id.id;
+}
+
 typedef struct {
     u32 id;
 } NameId;

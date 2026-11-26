@@ -1,4 +1,3 @@
-#include "type_pool.c"
 #include "eval.c"
 
 typedef enum {

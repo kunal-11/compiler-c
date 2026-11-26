@@ -1,4 +1,114 @@
+internal Buffer tree_fmt_self_middle = STR_LIT("├── ");
+internal Buffer tree_fmt_self_last = STR_LIT("└── ");
 
+internal Buffer tree_fmt_child_middle = STR_LIT("│   ");
+internal Buffer tree_fmt_child_last = STR_LIT("    ");
+
+internal u8 ast_print_buf[2048];
+
+internal void
+ast_print_tree(Ast *ast, InternPool *intern_pool, AstNodeId node_id, u32 prefix_len, b32 is_last) {
+    debug_assert(node_id.id != AST_NULL.id, STR_LIT("print null ast node"));
+
+    Buffer child_fmt = is_last ? tree_fmt_child_last : tree_fmt_child_middle;
+    for (u32 i = 0; i < child_fmt.len; i += 1) {
+        debug_assert(prefix_len + i < ARRAY_COUNT(ast_print_buf), STR_LIT("ast print buf OOM"));
+        ast_print_buf[prefix_len + i] = child_fmt.bytes[i];
+    }
+    u32 child_prefix_len = prefix_len + (u32)child_fmt.len;
+
+    Buffer self_fmt = is_last ? tree_fmt_self_last : tree_fmt_self_middle;
+    printf("%.*s%.*s", (int)prefix_len, ast_print_buf, (int)self_fmt.len, self_fmt.bytes);
+
+    if (node_id.id == AST_POISON.id) {
+        printf("POISON\n");
+        return;
+    }
+    AstNode node = ast_get_node(ast, node_id);
+    switch (node.type) {
+        case Ast_ConstDecl: {
+            Buffer name = intern_pool_get_string(intern_pool, node.decl.name);
+            printf("const: %.*s\n", (int)name.len, name.bytes);
+            if (node.decl.type.id != AST_NULL.id) {
+                ast_print_tree(ast, intern_pool, node.decl.type, child_prefix_len, false);
+            }
+            ast_print_tree(ast, intern_pool, node.decl.value, child_prefix_len, true);
+        } break;
+
+        case Ast_VarDecl: {
+            Buffer name = intern_pool_get_string(intern_pool, node.decl.name);
+            printf("var: %.*s\n", (int)name.len, name.bytes);
+            if (node.decl.type.id != AST_NULL.id) {
+                ast_print_tree(ast, intern_pool, node.decl.type, child_prefix_len, false);
+            }
+            ast_print_tree(ast, intern_pool, node.decl.value, child_prefix_len, true);
+        } break;
+
+        case Ast_Identifier: {
+            Buffer name = intern_pool_get_string(intern_pool, node.identifier);
+            printf("identifier: %.*s\n", (int)name.len, name.bytes);
+        } break;
+
+        case Ast_FnType: {
+            printf("fn_type\n");
+            for (u32 i = 0; i < node.fn_type.arg_count; i += 1) {
+                AstNodeId arg_node = ast_get_fn_arg_id(ast, node.fn_type, i);
+                ast_print_tree(ast, intern_pool, arg_node, child_prefix_len, false);
+            }
+            ast_print_tree(ast, intern_pool, node.fn_type.ret_type, child_prefix_len, true);
+        } break;
+
+        case Ast_FnArg: {
+            Buffer arg_name = intern_pool_get_string(intern_pool, node.fn_arg.name);
+            printf("fn_arg: %.*s\n", (int)arg_name.len, arg_name.bytes);
+            ast_print_tree(ast, intern_pool, node.fn_arg.type, child_prefix_len, true);
+        } break;
+
+        case Ast_PrefixOp: {
+            printf("prefix_op: ");
+            print_operator(node.prefix_op.op);
+            printf("\n");
+            ast_print_tree(ast, intern_pool, node.prefix_op.value, child_prefix_len, true);
+        } break;
+
+        case Ast_InfixOp: {
+            printf("infix_op: ");
+            print_operator(node.infix_op.op);
+            printf("\n");
+            ast_print_tree(ast, intern_pool, node.infix_op.lhs, child_prefix_len, false);
+            ast_print_tree(ast, intern_pool, node.infix_op.rhs, child_prefix_len, true);
+        } break;
+
+        case Ast_Assign: {
+            printf("assignment\n");
+            ast_print_tree(ast, intern_pool, node.assign.lhs, child_prefix_len, false);
+            ast_print_tree(ast, intern_pool, node.assign.rhs, child_prefix_len, true);
+        } break;
+
+        case Ast_FnLit: {
+            printf("fn_lit\n");
+            ast_print_tree(ast, intern_pool, node.fn_lit.type, child_prefix_len,
+                           node.fn_lit.body.count == 0);
+            for (u32 i = 0; i < node.fn_lit.body.count; i += 1) {
+                AstNodeId block_node = ast_get_block_node(ast, node.fn_lit.body, i);
+                ast_print_tree(ast, intern_pool, block_node, child_prefix_len,
+                               i == node.fn_lit.body.count - 1);
+            }
+        } break;
+
+        case Ast_BoolLit: {
+            printf("bool_lit: %d\n", node.bool_lit);
+        } break;
+
+        case Ast_NumLit: {
+            printf("num_lit\n");
+        } break;
+
+        case Ast_UndefLit: {
+            printf("undef_lit\n");
+        } break;
+    }
+}
 internal Buffer uir_fmt_indent = STR_LIT("    ");
 
 internal void
@@ -123,5 +233,129 @@ uir_print(Uir *uir, InternPool *intern_pool, UirInstId inst_id, u32 indent) {
         case Uir_Null:
             UNREACHABLE;
             break;
+    }
+}
+
+internal void
+type_print(TypePool *pool, TypeId id) {
+    Type type = type_pool_get_info(pool, id);
+    switch (type.format) {
+        case TypeFormat_Global: {
+            switch (type.global.id) {
+                case Type_None: {
+                    printf("none");
+                } break;
+                case Type_Void: {
+                    printf("void");
+                } break;
+                case Type_NoReturn: {
+                    printf("noreturn");
+                } break;
+                case Type_TypeId: {
+                    printf("typeid");
+                } break;
+                case Type_Bool: {
+                    printf("bool");
+                } break;
+                case Type_CompUndef: {
+                    printf("comp_undef");
+                } break;
+                case Type_CompInt: {
+                    printf("comp_int");
+                } break;
+                case Type_CompFloat: {
+                    printf("comp_float");
+                } break;
+                case Type_Isize: {
+                    printf("isize");
+                } break;
+                case Type_Usize: {
+                    printf("usize");
+                } break;
+                default:
+                    UNREACHABLE;
+            }
+        } break;
+
+        case TypeFormat_FixedInt: {
+            if (type.fixed_int.is_signed) {
+                printf("i");
+            } else {
+                printf("u");
+            }
+            printf("%d", type.fixed_int.width);
+        } break;
+
+        case TypeFormat_Fn: {
+            printf("fn ( ");
+            for (u32 i = 0; i < type.fn.args.count; i += 1) {
+                TypeId arg = type_pool_get_block_type(pool, type.fn.args, i);
+                type_print(pool, arg);
+                printf(" ");
+            }
+            printf(") ");
+            type_print(pool, type.fn.ret);
+        } break;
+
+        case TypeFormat_Ptr: {
+            printf("*");
+            type_print(pool, type.ptr_info.to);
+        } break;
+
+        case TypeFormat_Invalid:
+        case TypeFormat_Float: {
+            UNREACHABLE;
+        } break;
+    }
+}
+
+internal void
+eval_print_value(TypePool *type_pool, EvalValue val) {
+    switch (val.format) {
+        case EvalValue_Pending: {
+            printf("Pending");
+        } break;
+
+        case EvalValue_Poison: {
+            printf("Poison");
+        } break;
+
+        case EvalValue_NoReturn: {
+            printf("NoReturn");
+        } break;
+
+        case EvalValue_Void: {
+            printf("Void");
+        } break;
+
+        case EvalValue_Undef: {
+            printf("Undefined");
+        } break;
+
+        case EvalValue_Bool: {
+            printf("Bool: ");
+            if (val.boolean) {
+                printf("true");
+            } else {
+                printf("false");
+            }
+        } break;
+
+        case EvalValue_Int: {
+            printf("Int: %li", val.integer);
+        } break;
+
+        case EvalValue_Type: {
+            printf("Type: ");
+            type_print(type_pool, val.type_val);
+        } break;
+
+        case EvalValue_FnLit: {
+            printf("Fn");
+        } break;
+
+        case EvalValue_Runtime: {
+            UNREACHABLE;
+        } break;
     }
 }
