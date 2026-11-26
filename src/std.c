@@ -175,3 +175,23 @@ fnv_hash(u32 init, Buffer buf) {
     }
     return init;
 }
+
+// TODO: handle overflow
+internal b32
+parse_u64(Buffer buf, u64 *out) {
+    u64 res = 0;
+    for (usize i = 0; i < buf.len; i += 1) {
+        if (buf.bytes[i] == '_') {
+            continue;
+        }
+
+        if (buf.bytes[i] < '0' || buf.bytes[i] > '9') {
+            return false;
+        }
+
+        res *= 10;
+        res += buf.bytes[i] - '0';
+    }
+    *out = res;
+    return true;
+}

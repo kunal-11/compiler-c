@@ -1,4 +1,5 @@
 #include "compiler.c"
+#include "debug_printer.c"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -44,8 +45,10 @@ main(void) {
     Arena arena = {.bytes = memory, .max_len = MEM_SIZE};
 
     InternPool *intern_pool = intern_pool_init(&arena);
+    TypePool *type_pool = type_pool_init(&arena);
     DeclTable *decl_table = decl_table_init(&arena);
-    AnalysisState *analysis = analysis_state_init(&arena, intern_pool, decl_table);
+    Namespace *ns = namespace_init(&arena);
+    // AnalysisState *analysis = analysis_state_init(&arena, intern_pool, decl_table);
 
     Buffer file = read_full_file(&arena, test_path);
     if (file.bytes == 0) {
@@ -59,17 +62,21 @@ main(void) {
         AstNodeId top_decl = parser_parse_toplevel(parser);
         ast_print_tree(parser->ast, intern_pool, top_decl, 0, true);
 
-        UirLowerState *uir_lower = uir_lower_init(&arena, parser->ast, file_id);
+        UirLowerState *uir_lower = uir_lower_init(&arena, parser->ast, file_id, file);
         UirInstId uir_inst = uir_lower_global(uir_lower, top_decl);
         uir_print(uir_lower->uir, intern_pool, uir_inst, 0);
-        printf("\n");
 
-        DeclId decl_id = decl_table_alloc(decl_table, file_id, uir_lower->uir, uir_inst);
-        analysis_queue_decl(analysis, decl_id);
-    }
+        EvalState *eval = eval_state_init(&arena, intern_pool, type_pool, decl_table, ns,
+                                          uir_lower->uir, file_id);
+        EvalValue value = eval_inst(eval, uir_inst, EvalMode_Exec);
 
-    while (analysis_process_entry(analysis)) {
+        printf("eval: %d\n\n", value.format);
+
+        // DeclId decl_id = decl_table_alloc(decl_table, file_id, uir_lower->uir, uir_inst);
+        // analysis_queue_decl(analysis, decl_id);
     }
+    // while (analysis_process_entry(analysis)) {
+    // }
 cleanup:
     if (memory != 0) {
         free(memory);

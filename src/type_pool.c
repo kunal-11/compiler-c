@@ -8,6 +8,7 @@ typedef enum {
 
     Type_CompInt,
     Type_CompFloat,
+    Type_CompUndef,
 
     Type_Usize,
     Type_Isize,
@@ -50,8 +51,12 @@ typedef struct {
 } PtrInfo;
 
 typedef struct {
-    TypeExtraId first_arg;
-    u32 arg_count;
+    TypeExtraId first;
+    u32 count;
+} TypeBlock;
+
+typedef struct {
+    TypeBlock args;
     TypeId ret;
 } FnTypeInfo;
 
@@ -80,12 +85,24 @@ typedef struct {
     u32 extra_capacity;
 } TypePool;
 
+internal TypeBlock
+type_pool_alloc_block(TypePool *pool, TypeId *ids, u32 count) {
+    debug_assert(pool->extra_count + count <= pool->extra_capacity,
+                 STR_LIT("type pool extra OOM"));
+    TypeExtraId offset = {.id = pool->extra_count};
+    for (u32 i = 0; i < count; i += 1) {
+        pool->extras[pool->extra_count + i] = ids[i].id;
+    }
+    pool->extra_count += count;
+    return (TypeBlock){.first = offset, .count = count};
+}
+
 internal TypeId
-type_pool_fn_arg(TypePool *pool, FnTypeInfo fn_type, u32 idx) {
-    debug_assert(fn_type.first_arg.id + fn_type.arg_count <= pool->extra_count,
+type_pool_get_block_type(TypePool *pool, TypeBlock block, u32 idx) {
+    debug_assert(block.first.id + block.count <= pool->extra_count,
                  STR_LIT("type pool extra id OOB"));
-    debug_assert(idx < fn_type.arg_count, STR_LIT("type pool arg idx OOB"));
-    return TYPE_ID(pool->extras[fn_type.first_arg.id + idx]);
+    debug_assert(idx < block.count, STR_LIT("type pool arg idx OOB"));
+    return TYPE_ID(pool->extras[block.first.id + idx]);
 }
 
 internal u32
@@ -110,8 +127,8 @@ type_hash(TypePool *pool, Type type) {
         } break;
 
         case TypeFormat_Fn: {
-            for (u32 i = 0; i < type.fn.arg_count; i += 1) {
-                TypeId arg_type = type_pool_fn_arg(pool, type.fn, i);
+            for (u32 i = 0; i < type.fn.args.count; i += 1) {
+                TypeId arg_type = type_pool_get_block_type(pool, type.fn.args, i);
                 hash = fnv_hash(hash, to_buffer(arg_type));
             }
             hash = fnv_hash(hash, to_buffer(type.fn.ret));
@@ -149,14 +166,14 @@ type_eql(TypePool *pool, Type t1, Type t2) {
         } break;
 
         case TypeFormat_Fn: {
-            if (t1.fn.arg_count != t2.fn.arg_count) {
+            if (t1.fn.args.count != t2.fn.args.count) {
                 result = false;
                 break;
             }
             b32 args_eql = true;
-            for (u32 i = 0; i < t1.fn.arg_count; i += 1) {
-                TypeId arg1 = type_pool_fn_arg(pool, t1.fn, i);
-                TypeId arg2 = type_pool_fn_arg(pool, t2.fn, i);
+            for (u32 i = 0; i < t1.fn.args.count; i += 1) {
+                TypeId arg1 = type_pool_get_block_type(pool, t1.fn.args, i);
+                TypeId arg2 = type_pool_get_block_type(pool, t2.fn.args, i);
                 if (arg1.id != arg2.id) {
                     args_eql = false;
                     break;
@@ -221,4 +238,44 @@ type_pool_init(Arena *arena) {
         *slot = TYPE_ID(i);
     }
     return pool;
+}
+
+internal Type
+type_pool_get_info(TypePool *pool, TypeId id) {
+    debug_assert(id.id != Type_None, STR_LIT("type pool get none type"));
+    debug_assert(id.id < pool->type_count, STR_LIT("type pool get type OOB"));
+    return pool->types[id.id];
+}
+
+internal TypeId
+type_pool_get_type_id(TypePool *pool, Type type, TypeExtraId extra_marker) {
+    TypeId *slot = type_pool_get_slot(pool, type);
+    if (slot->id == Type_None) {
+        debug_assert(pool->type_count < pool->type_capacity, STR_LIT("type pool OOM"));
+        pool->types[pool->type_count] = type;
+        slot->id = pool->type_count;
+        pool->type_count += 1;
+    } else {
+        pool->extra_count = extra_marker.id;
+    }
+    return *slot;
+}
+
+internal TypeId
+type_pool_fn_id(TypePool *pool, TypeId *args, u32 arg_count, TypeId ret) {
+    TypeBlock args_block = type_pool_alloc_block(pool, args, arg_count);
+    Type fn_type = {
+        .format = TypeFormat_Fn,
+        .fn = {.args = args_block, .ret = ret},
+    };
+    return type_pool_get_type_id(pool, fn_type, args_block.first);
+}
+
+internal TypeId
+type_pool_int(TypePool *pool, b8 is_signed, u16 width) {
+    Type t = {
+        .format = TypeFormat_FixedInt,
+        .fixed_int = {.is_signed = is_signed, .width = width},
+    };
+    return type_pool_get_type_id(pool, t, (TypeExtraId){.id = pool->extra_count});
 }

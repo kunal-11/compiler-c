@@ -1,5 +1,5 @@
-#define AST_NULL_ID ((AstNodeId){.id = 0})
-#define AST_POISON_ID ((AstNodeId){.id = 1})
+#define AST_NULL ((AstNodeId){.id = 0})
+#define AST_POISON ((AstNodeId){.id = 1})
 
 typedef struct {
     u32 id;
@@ -179,8 +179,8 @@ ast_get_block_node(Ast *ast, AstBlock block, u32 idx) {
 
 internal AstNode
 ast_get_node(Ast *ast, AstNodeId id) {
-    debug_assert(id.id != AST_NULL_ID.id, STR_LIT("ast get null node"));
-    debug_assert(id.id != AST_POISON_ID.id, STR_LIT("ast get poison node"));
+    debug_assert(id.id != AST_NULL.id, STR_LIT("ast get null node"));
+    debug_assert(id.id != AST_POISON.id, STR_LIT("ast get poison node"));
     debug_assert(id.id < ast->next_node, STR_LIT("ast node OOB"));
     return ast->nodes[id.id];
 }
@@ -195,7 +195,7 @@ internal u8 ast_print_buf[2048];
 
 internal void
 ast_print_tree(Ast *ast, InternPool *intern_pool, AstNodeId node_id, u32 prefix_len, b32 is_last) {
-    debug_assert(node_id.id != AST_NULL_ID.id, STR_LIT("print null ast node"));
+    debug_assert(node_id.id != AST_NULL.id, STR_LIT("print null ast node"));
 
     Buffer child_fmt = is_last ? tree_fmt_child_last : tree_fmt_child_middle;
     for (u32 i = 0; i < child_fmt.len; i += 1) {
@@ -207,7 +207,7 @@ ast_print_tree(Ast *ast, InternPool *intern_pool, AstNodeId node_id, u32 prefix_
     Buffer self_fmt = is_last ? tree_fmt_self_last : tree_fmt_self_middle;
     printf("%.*s%.*s", (int)prefix_len, ast_print_buf, (int)self_fmt.len, self_fmt.bytes);
 
-    if (node_id.id == AST_POISON_ID.id) {
+    if (node_id.id == AST_POISON.id) {
         printf("POISON\n");
         return;
     }
@@ -216,7 +216,7 @@ ast_print_tree(Ast *ast, InternPool *intern_pool, AstNodeId node_id, u32 prefix_
         case Ast_ConstDecl: {
             Buffer name = intern_pool_get_string(intern_pool, node.decl.name);
             printf("const: %.*s\n", (int)name.len, name.bytes);
-            if (node.decl.type.id != AST_NULL_ID.id) {
+            if (node.decl.type.id != AST_NULL.id) {
                 ast_print_tree(ast, intern_pool, node.decl.type, child_prefix_len, false);
             }
             ast_print_tree(ast, intern_pool, node.decl.value, child_prefix_len, true);
@@ -225,7 +225,7 @@ ast_print_tree(Ast *ast, InternPool *intern_pool, AstNodeId node_id, u32 prefix_
         case Ast_VarDecl: {
             Buffer name = intern_pool_get_string(intern_pool, node.decl.name);
             printf("var: %.*s\n", (int)name.len, name.bytes);
-            if (node.decl.type.id != AST_NULL_ID.id) {
+            if (node.decl.type.id != AST_NULL.id) {
                 ast_print_tree(ast, intern_pool, node.decl.type, child_prefix_len, false);
             }
             ast_print_tree(ast, intern_pool, node.decl.value, child_prefix_len, true);
@@ -259,7 +259,7 @@ ast_print_tree(Ast *ast, InternPool *intern_pool, AstNodeId node_id, u32 prefix_
         } break;
 
         case Ast_InfixOp: {
-            printf("prefix_op: ");
+            printf("infix_op: ");
             print_operator(node.infix_op.op);
             printf("\n");
             ast_print_tree(ast, intern_pool, node.infix_op.lhs, child_prefix_len, false);

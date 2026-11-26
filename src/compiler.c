@@ -44,7 +44,7 @@ print_operator(Operator op) {
     }
 }
 
-#define FILE_NULL_ID ((FileId){.id = 0})
+#define FILE_NULL ((FileId){.id = 0})
 typedef struct {
     u32 id;
 } FileId;
@@ -66,11 +66,17 @@ typedef enum {
     Message_ExpectedDeclType,
     Message_ExpectedExpression,
     Message_ExpectedAddressable,
+    Message_UndeclaredIdentifier,
+    Message_MalformedNumLiteral,
 
     Message_RedeclaredName,
     Message_RuntimeClosure,
     Message_LvalueInvalid,
     Message_LvalueConstant,
+
+    Message_CoersionFailed,
+    Message_TypeInRuntime,
+    Message_ExpectedType,
 } MessageType;
 
 typedef struct {
@@ -87,4 +93,5 @@ typedef struct {
 
 #include "parser.c"
 #include "uir_lower.c"
+#include "namespace.c"
 #include "analysis.c"

@@ -167,7 +167,7 @@ parser_parse_expr(ParserState *, u32);
 
 internal AstNodeId
 parser_parse_fn_type(ParserState *state) {
-    AstNodeId result = AST_POISON_ID;
+    AstNodeId result = AST_POISON;
     Flusher flusher = flusher_init(&state->scratch);
 
     Token fn_key = parser_peek_token(state, 0);
@@ -220,15 +220,15 @@ internal AstNodeId
 parser_parse_decl(ParserState *state) {
     Token identifier = parser_peek_token(state, 0);
     if (!parser_expect_token(state, Token_Identifier)) {
-        return AST_POISON_ID;
+        return AST_POISON;
     }
 
     if (!parser_expect_token(state, Token_Colon)) {
-        return AST_POISON_ID;
+        return AST_POISON;
     }
 
     Token assign = parser_peek_token(state, 0);
-    AstNodeId type = AST_NULL_ID;
+    AstNodeId type = AST_NULL;
     if (assign.type != Token_Equals && assign.type != Token_Colon) {
         type = parser_parse_expr(state, TYPE_BINDING_POWER);
     }
@@ -252,7 +252,7 @@ parser_parse_decl(ParserState *state) {
                 .type = Message_ExpectedDeclType,
             };
             parser_add_message(state, msg);
-            return AST_POISON_ID;
+            return AST_POISON;
         } break;
     }
     parser_advance_token(state);
@@ -299,7 +299,7 @@ parser_parse_statement(ParserState *state) {
     }
 
 cleanup:
-    if (result.id == AST_POISON_ID.id) {
+    if (result.id == AST_POISON.id) {
         parser_recover(state, false);
     }
     parser_expect_token(state, Token_Semicolon);
@@ -409,7 +409,7 @@ parser_parse_expr(ParserState *state, u32 parent_binding_pow) {
                 .type = Message_ExpectedExpression,
             };
             parser_add_message(state, msg);
-            return AST_POISON_ID;
+            return AST_POISON;
         } break;
     }
 
@@ -462,7 +462,7 @@ parser_parse_expr(ParserState *state, u32 parent_binding_pow) {
 internal AstNodeId
 parser_parse_toplevel(ParserState *state) {
     AstNodeId node = parser_parse_decl(state);
-    if (node.id == AST_POISON_ID.id) {
+    if (node.id == AST_POISON.id) {
         parser_recover(state, true);
     } else {
         parser_expect_token(state, Token_Semicolon);

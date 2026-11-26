@@ -2,64 +2,6 @@
 #include "eval.c"
 
 typedef enum {
-    DeclStatus_Ready,
-    DeclStatus_Queued,
-    DeclStatus_InProgress,
-    DeclStatus_Done,
-} DeclStatus;
-
-typedef struct {
-    FileId file;
-
-    Uir *uir;
-    UirInstId uir_inst;
-
-    DeclStatus status;
-} Decl;
-
-#define DECL_NULL_ID ((DeclId){.id = 0})
-typedef struct {
-    u32 id;
-} DeclId;
-
-typedef struct {
-    Decl *decls;
-    u32 count;
-    u32 capacity;
-} DeclTable;
-
-#define DECL_TABLE_CAPACITY 2048
-
-internal DeclTable *
-decl_table_init(Arena *arena) {
-    DeclTable *table = arena_push_struct(arena, DeclTable);
-    table->decls = arena_push_array(arena, Decl, DECL_TABLE_CAPACITY);
-    table->capacity = DECL_TABLE_CAPACITY;
-    table->count = 1;
-    return table;
-}
-
-internal DeclId
-decl_table_alloc(DeclTable *table, FileId file, Uir *uir, UirInstId uir_inst) {
-    debug_assert(table->count < table->capacity, STR_LIT("eval table OOM"));
-    DeclId result = {.id = table->count};
-    table->count += 1;
-    table->decls[result.id] = (Decl){
-        .file = file,
-        .uir = uir,
-        .uir_inst = uir_inst,
-        .status = DeclStatus_Ready,
-    };
-    return result;
-}
-
-internal Decl *
-decl_table_get_decl(DeclTable *table, DeclId id) {
-    debug_assert(id.id != DECL_NULL_ID.id, STR_LIT("item table get null id"));
-    return table->decls + id.id;
-}
-
-typedef enum {
     AnalysisType_Decl,
     AnalysisType_Fn,
 } AnalysisType;
@@ -140,7 +82,7 @@ analysis_process_entry(AnalysisState *state) {
     AnalysisEntry entry = analysis_queue_pop_entry(&state->queue);
     switch (entry.type) {
         case AnalysisType_Decl: {
-            Decl *decl = decl_table_get_decl(state->decl_table, entry.decl);
+            // Decl *decl = decl_table_get_decl(state->decl_table, entry.decl);
             printf("analysis decl: %d\n", entry.decl.id);
         } break;
 
