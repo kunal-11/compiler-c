@@ -83,15 +83,19 @@ typedef enum {
     FnStatus_Queued,
     FnStatus_InProgress,
     FnStatus_Done,
+    FnStatus_Failed,
 } FnStatus;
 
 typedef struct {
-    DeclId decl;
+    FileId file;
+    Namespace *ns;
+    Uir uir;
     UirInstId uir_inst;
 
     TypeId type;
     FnStatus status;
 
+    // filled only for done status
     Tir tir;
     TirInstId tir_inst;
 } Fn;
@@ -113,7 +117,7 @@ internal FnTable *
 fn_table_init(Arena *arena);
 
 internal FnId
-fn_table_alloc(FnTable *table, TypeId type);
+fn_table_alloc(FnTable *table, TypeId type, FileId file, Namespace *ns, Uir uir, UirInstId inst);
 
 internal Fn *
 fn_table_get_fn(FnTable *table, FnId id);
@@ -161,6 +165,7 @@ typedef enum {
 
 typedef struct {
     FileId file;
+    u32 pos;
     b32 is_const;
 
     Uir uir;
@@ -184,7 +189,8 @@ internal DeclTable *
 decl_table_init(Arena *arena);
 
 internal DeclId
-decl_table_alloc(DeclTable *table, FileId file, Uir uir, struct Namespace *ns, UirInstId uir_inst);
+decl_table_alloc(DeclTable *table, FileId file, u32 pos, b32 is_cont, Uir uir, Namespace *ns,
+                 UirInstId uir_inst);
 
 internal Decl *
 decl_table_get_decl(DeclTable *table, DeclId id);
@@ -262,3 +268,12 @@ typedef struct {
 
 internal AnalysisState *
 analysis_state_init(Arena *arena, InternPool *intern_pool);
+
+internal void
+analysis_queue_decl(AnalysisState *state, DeclId decl_id);
+
+internal EvalValue
+analysis_exec_decl(AnalysisState *state, DeclId decl_id);
+
+internal void
+analysis_analyze(AnalysisState *state);

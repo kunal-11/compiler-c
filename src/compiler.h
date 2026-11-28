@@ -31,6 +31,9 @@ typedef enum {
     Message_LvalueInvalid,
     Message_LvalueConstant,
 
+    Message_GlobalCycleDetected,
+    Message_GlobalVarInCompMode,
+
     Message_CoersionFailed,
     Message_TypeInRuntime,
     Message_ExpectedType,
@@ -54,5 +57,3 @@ typedef struct {
 
 #include "type_pool.h"
 #include "analysis.h"
-
-#include "debug_printer.h"

@@ -69,8 +69,9 @@ main(void) {
                 Uir uir = uir_lower_emit_chunk(uir_lower);
                 uir_print(&uir, intern_pool, uir_inst, 0);
 
-                DeclId decl_id =
-                    decl_table_alloc(analysis->decl_table, file_id, uir, ns, uir_inst);
+                b32 is_const = node.type == Ast_ConstDecl;
+                DeclId decl_id = decl_table_alloc(analysis->decl_table, file_id, node.pos,
+                                                  is_const, uir, ns, uir_inst);
                 AddNameResult name_res = namespace_add_name(ns, node.decl.name, decl_id);
                 if (name_res.redeclared) {
                     // TODO: report global redeclared error

@@ -1,4 +1,3 @@
-
 internal UirInst
 uir_get_inst(Uir *uir, UirInstId inst_id) {
     debug_assert(inst_id.id != UIR_NULL.id, STR_LIT("uir get null inst"));
@@ -6,8 +5,6 @@ uir_get_inst(Uir *uir, UirInstId inst_id) {
     debug_assert(inst_id.id < uir->inst_count, STR_LIT("uir inst id OOB"));
     return uir->insts[inst_id.id];
 }
-
-// functions for extra access
 
 internal UirInstId
 uir_get_block_inst_id(Uir *uir, UirBlock block, u32 idx) {
@@ -88,7 +85,9 @@ uir_name_table_find_name(UirNameTable *table, InternId intern_id, u32 fn_depth) 
     if (slot->intern_id.id == INTERN_NULL.id) {
         return (UirNameFindResult){.tag = UirFindName_Empty};
     }
-    if (slot->fn_depth != fn_depth && slot->type != UirNameType_Const) {
+
+    // closures not allowed
+    if (slot->fn_depth != fn_depth) {
         return (UirNameFindResult){.tag = UirFindName_Closure, .name = *slot};
     }
     return (UirNameFindResult){.tag = UirFindName_Success, .name = *slot};

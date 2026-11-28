@@ -340,7 +340,7 @@ type_print(TypePool *pool, TypeId id) {
 }
 
 internal void
-eval_print_value(TypePool *type_pool, EvalValue val) {
+eval_value_print(TypePool *type_pool, EvalValue val) {
     switch (val.format) {
         case EvalValue_Pending: {
             printf("Pending");
@@ -381,11 +381,20 @@ eval_print_value(TypePool *type_pool, EvalValue val) {
         } break;
 
         case EvalValue_FnLit: {
-            printf("Fn");
+            printf("Fn id: %d", val.fn_lit.id);
         } break;
 
         case EvalValue_Runtime: {
             UNREACHABLE;
         } break;
+    }
+}
+
+internal void
+eval_frame_print(TypePool *type_pool, EvalFrame *frame) {
+    for (u32 i = 2; i < frame->uir.inst_count; i += 1) {
+        printf("%%%d: ", i);
+        eval_value_print(type_pool, frame->values[i]);
+        printf("\n");
     }
 }

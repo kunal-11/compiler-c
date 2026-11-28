@@ -76,13 +76,18 @@ fn_table_init(Arena *arena) {
 }
 
 internal FnId
-fn_table_alloc(FnTable *table, TypeId type) {
+fn_table_alloc(FnTable *table, TypeId type, FileId file, Namespace *ns, Uir uir, UirInstId inst) {
     debug_assert(table->count < table->capacity, STR_LIT("fn table OOM"));
     FnId result = {.id = table->count};
     table->count += 1;
     table->fns[result.id] = (Fn){
         .type = type,
         .status = FnStatus_Ready,
+
+        .file = file,
+        .ns = ns,
+        .uir = uir,
+        .uir_inst = inst,
     };
     return result;
 }
@@ -105,7 +110,8 @@ decl_table_init(Arena *arena) {
 }
 
 internal DeclId
-decl_table_alloc(DeclTable *table, FileId file, Uir uir, Namespace *ns, UirInstId uir_inst) {
+decl_table_alloc(DeclTable *table, FileId file, u32 pos, b32 is_const, Uir uir, Namespace *ns,
+                 UirInstId uir_inst) {
     debug_assert(table->count < table->capacity, STR_LIT("decl table OOM"));
     DeclId result = {.id = table->count};
     table->count += 1;
@@ -114,6 +120,8 @@ decl_table_alloc(DeclTable *table, FileId file, Uir uir, Namespace *ns, UirInstI
         .uir = uir,
         .ns = ns,
         .uir_inst = uir_inst,
+        .is_const = is_const,
+        .pos = pos,
         .status = DeclStatus_Ready,
     };
     return result;
@@ -342,11 +350,12 @@ eval_global_value(AnalysisState *state, EvalFrame *frame, UirInstId inst_id, Eva
     UirInst inst = uir_get_inst(&frame->uir, inst_id);
     debug_assert(inst.type == Uir_GlobalValue, STR_LIT("eval invalid break"));
 
-    DeclId decl = namespace_find_name(frame->ns, inst.global);
-    if (decl.id == DECL_NULL.id) {
+    DeclId decl_id = namespace_find_name(frame->ns, inst.global);
+    EvalValue result = EVAL_VALUE_POISON;
+    if (decl_id.id == DECL_NULL.id) {
         EvalValue intrinsic;
         if (eval_resolve_intrinsic(state, inst.global, &intrinsic)) {
-            return intrinsic;
+            result = intrinsic;
         } else {
             Message message = {
                 .file = frame->file,
@@ -355,19 +364,31 @@ eval_global_value(AnalysisState *state, EvalFrame *frame, UirInstId inst_id, Eva
                 .type = Message_UndeclaredIdentifier,
             };
             analysis_add_message(state, message);
-            return EVAL_VALUE_POISON;
+            result = EVAL_VALUE_POISON;
         }
-    }
+    } else {
+        Decl *decl = decl_table_get_decl(state->decl_table, decl_id);
+        if (decl->is_const) {
+            result = analysis_exec_decl(state, decl_id);
+        } else {
+            switch (mode) {
+                case EvalMode_Emit: {
+                    debug_log_error(STR_LIT("TODO: handle global vars"));
+                    result = EVAL_VALUE_POISON;
+                } break;
 
-    // TODO: emit globals vals
-    EvalValue result;
-    switch (mode) {
-        case EvalMode_Emit: {
-            result = EVAL_VALUE_POISON;
-        } break;
-        case EvalMode_Exec: {
-            result = EVAL_VALUE_POISON;
-        } break;
+                case EvalMode_Exec: {
+                    Message message = {
+                        .file = frame->file,
+                        .pos = inst.pos,
+                        .severity = Severity_Error,
+                        .type = Message_GlobalVarInCompMode,
+                    };
+                    analysis_add_message(state, message);
+                    result = EVAL_VALUE_POISON;
+                } break;
+            }
+        }
     }
     return result;
 }
@@ -426,29 +447,23 @@ eval_inst(AnalysisState *state, EvalFrame *frame, UirInstId inst_id, EvalMode mo
         case Uir_FnLit: {
             switch (mode) {
                 case EvalMode_Emit: {
-                    Message msg = {
-                        .file = frame->file,
-                        .pos = inst.pos,
-                        .severity = Severity_Error,
-                        .type = Message_TypeInRuntime,
-                    };
-                    analysis_add_message(state, msg);
+
                 } break;
 
                 case EvalMode_Exec: {
                     TypeId fn_type;
-                    if (!eval_expect_type(state, frame, inst.fn_lit.fn_type, &fn_type)) {
-                        debug_assert(false, STR_LIT("fn lit invalid type"));
+                    if (eval_expect_type(state, frame, inst.fn_lit.fn_type, &fn_type)) {
+                        debug_assert(type_pool_get_info(state->type_pool, fn_type).format ==
+                                         TypeFormat_Fn,
+                                     STR_LIT("fn lit invalid type"));
+                        FnId fn_id = fn_table_alloc(state->fn_table, fn_type, frame->file,
+                                                    frame->ns, frame->uir, inst_id);
+                        result = (EvalValue){
+                            .format = EvalValue_FnLit,
+                            .type = fn_type,
+                            .fn_lit = fn_id,
+                        };
                     }
-                    debug_assert(type_pool_get_info(state->type_pool, fn_type).format ==
-                                     TypeFormat_Fn,
-                                 STR_LIT("fn lit invalid type"));
-                    FnId fn_id = fn_table_alloc(state->fn_table, fn_type);
-                    result = (EvalValue){
-                        .format = EvalValue_FnLit,
-                        .type = fn_type,
-                        .fn_lit = fn_id,
-                    };
                 } break;
             }
         } break;
@@ -551,26 +566,71 @@ analysis_state_init(Arena *arena, InternPool *intern_pool) {
 
 internal void
 analysis_queue_decl(AnalysisState *state, DeclId decl_id) {
-    AnalysisEntry entry = {
-        .type = AnalysisType_Decl,
-        .decl = decl_id,
-    };
-    analysis_queue_push_entry(&state->queue, entry);
-
     Decl *decl = decl_table_get_decl(state->decl_table, decl_id);
-    decl->status = DeclStatus_Queued;
+    if (decl->status == DeclStatus_Ready) {
+        AnalysisEntry entry = {
+            .type = AnalysisType_Decl,
+            .decl = decl_id,
+        };
+        analysis_queue_push_entry(&state->queue, entry);
+        decl->status = DeclStatus_Queued;
+    }
 }
 
 internal void
 analysis_queue_fn(AnalysisState *state, FnId fn_id) {
-    AnalysisEntry entry = {
-        .type = AnalysisType_Fn,
-        .fn = fn_id,
-    };
-    analysis_queue_push_entry(&state->queue, entry);
 
     Fn *fn = fn_table_get_fn(state->fn_table, fn_id);
-    fn->status = FnStatus_Queued;
+    if (fn->status == FnStatus_Ready) {
+        AnalysisEntry entry = {
+            .type = AnalysisType_Fn,
+            .fn = fn_id,
+        };
+        analysis_queue_push_entry(&state->queue, entry);
+        fn->status = FnStatus_Queued;
+    }
+}
+
+internal EvalValue
+analysis_exec_decl(AnalysisState *state, DeclId decl_id) {
+    Decl *decl = decl_table_get_decl(state->decl_table, decl_id);
+    EvalValue result = EVAL_VALUE_POISON;
+    switch (decl->status) {
+        case DeclStatus_InProgress: {
+            Message msg = {
+                .file = decl->file,
+                .pos = decl->pos,
+                .severity = Severity_Error,
+                .type = Message_GlobalCycleDetected,
+            };
+            analysis_add_message(state, msg);
+            result = EVAL_VALUE_POISON;
+        } break;
+
+        case DeclStatus_Ready:
+        case DeclStatus_Queued: {
+            Flusher flusher = flusher_init(&state->scratch);
+
+            decl->status = DeclStatus_InProgress;
+            EvalFrame *frame = eval_frame_init(&state->scratch, decl->ns, decl->file, decl->uir);
+            EvalValue value = eval_inst(state, frame, decl->uir_inst, EvalMode_Exec);
+
+            if (value.format == EvalValue_FnLit) {
+                analysis_queue_fn(state, value.fn_lit);
+            }
+            decl->status = DeclStatus_Done;
+            decl->eval_value = value;
+
+            flusher_flush(flusher);
+
+            result = value;
+        } break;
+
+        case DeclStatus_Done: {
+            result = decl->eval_value;
+        } break;
+    }
+    return result;
 }
 
 #include "debug_printer.c"
@@ -582,28 +642,56 @@ analysis_analyze(AnalysisState *state) {
         switch (entry.type) {
             case AnalysisType_Decl: {
                 Decl *decl = decl_table_get_decl(state->decl_table, entry.decl);
+                debug_assert(decl->status == DeclStatus_Queued || decl->status == DeclStatus_Done,
+                             STR_LIT("analysis decl status invalid"));
 
-                EvalFrame *frame =
-                    eval_frame_init(&state->scratch, decl->ns, decl->file, decl->uir);
-                EvalValue value = eval_inst(state, frame, decl->uir_inst, EvalMode_Exec);
-                printf("\nEval:\n");
-                for (u32 i = 2; i < frame->uir.inst_count; i += 1) {
-                    printf("%%%d: ", i);
-                    eval_print_value(state->type_pool, frame->values[i]);
-                    printf("\n");
-                }
-
-                printf("\nResult: ");
-                eval_print_value(state->type_pool, value);
+                EvalValue value = analysis_exec_decl(state, entry.decl);
+                printf("Decl #%d = ", entry.decl.id);
+                eval_value_print(state->type_pool, value);
                 printf("\n\n");
-
-                if (value.format == EvalValue_FnLit) {
-                    analysis_queue_fn(state, value.fn_lit);
-                }
             } break;
 
             case AnalysisType_Fn: {
+                printf("analysis fn id - %d\n", entry.fn.id);
                 Fn *fn = fn_table_get_fn(state->fn_table, entry.fn);
+
+                switch (fn->status) {
+                    case FnStatus_Ready:
+                    case FnStatus_InProgress: {
+                        debug_assert(false, STR_LIT("analysis fn invalid status"));
+                    } break;
+
+                    case FnStatus_Queued: {
+                        Flusher flusher = flusher_init(&state->scratch);
+                        fn->status = FnStatus_InProgress;
+
+                        EvalFrame *frame =
+                            eval_frame_init(&state->scratch, fn->ns, fn->file, fn->uir);
+                        EvalValue value = eval_inst(state, frame, fn->uir_inst, EvalMode_Emit);
+
+                        switch (value.format) {
+                            case EvalValue_Runtime: {
+                                fn->tir_inst = value.runtime;
+                                fn->status = FnStatus_Done;
+                            } break;
+
+                            case EvalValue_Poison: {
+                                fn->status = FnStatus_Failed;
+                            } break;
+
+                            default: {
+                                debug_assert(false, STR_LIT("invalid fn emit result"));
+                            } break;
+                        }
+
+                        flusher_flush(flusher);
+                    } break;
+
+                    case FnStatus_Failed:
+                    case FnStatus_Done: {
+                    } break;
+                }
+
             } break;
         }
     }
