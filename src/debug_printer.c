@@ -1,3 +1,33 @@
+internal void
+print_operator(Operator op) {
+    switch (op) {
+        case Op_Add: {
+            printf("+");
+        } break;
+
+        case Op_Negate:
+        case Op_Subtract: {
+            printf("-");
+        } break;
+
+        case Op_Mul: {
+            printf("*");
+        } break;
+
+        case Op_Div: {
+            printf("/");
+        } break;
+
+        case Op_Mod: {
+            printf("%%");
+        } break;
+
+        case Op_Invalid: {
+            UNREACHABLE;
+        } break;
+    }
+}
+
 internal Buffer tree_fmt_self_middle = STR_LIT("├── ");
 internal Buffer tree_fmt_self_last = STR_LIT("└── ");
 
@@ -51,8 +81,8 @@ ast_print_tree(Ast *ast, InternPool *intern_pool, AstNodeId node_id, u32 prefix_
 
         case Ast_FnType: {
             printf("fn_type\n");
-            for (u32 i = 0; i < node.fn_type.arg_count; i += 1) {
-                AstNodeId arg_node = ast_get_fn_arg_id(ast, node.fn_type, i);
+            for (u32 i = 0; i < node.fn_type.args.count; i += 1) {
+                AstNodeId arg_node = ast_get_list_node(ast, node.fn_type.args, i);
                 ast_print_tree(ast, intern_pool, arg_node, child_prefix_len, false);
             }
             ast_print_tree(ast, intern_pool, node.fn_type.ret_type, child_prefix_len, true);
@@ -90,7 +120,7 @@ ast_print_tree(Ast *ast, InternPool *intern_pool, AstNodeId node_id, u32 prefix_
             ast_print_tree(ast, intern_pool, node.fn_lit.type, child_prefix_len,
                            node.fn_lit.body.count == 0);
             for (u32 i = 0; i < node.fn_lit.body.count; i += 1) {
-                AstNodeId block_node = ast_get_block_node(ast, node.fn_lit.body, i);
+                AstNodeId block_node = ast_get_list_node(ast, node.fn_lit.body, i);
                 ast_print_tree(ast, intern_pool, block_node, child_prefix_len,
                                i == node.fn_lit.body.count - 1);
             }

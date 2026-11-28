@@ -1,7 +1,6 @@
 #include "compiler.c"
-#include "debug_printer.c"
 
-#include <stdio.h>
+// #include <stdio.h>
 #include <stdlib.h>
 
 char *test_path = "testdata/mod1/test.pnx";
@@ -45,12 +44,8 @@ main(void) {
     Arena arena = {.bytes = memory, .max_len = MEM_SIZE};
 
     InternPool *intern_pool = intern_pool_init(&arena);
-    TypePool *type_pool = type_pool_init(&arena);
-    DeclTable *decl_table = decl_table_init(&arena);
-    FnTable *fn_table = fn_table_init(&arena);
-
     Namespace *ns = namespace_init(&arena);
-    // AnalysisState *analysis = analysis_state_init(&arena, intern_pool, decl_table);
+    AnalysisState *analysis = analysis_state_init(&arena, intern_pool);
 
     Buffer file = read_full_file(&arena, test_path);
     if (file.bytes == 0) {
@@ -59,34 +54,40 @@ main(void) {
     }
     FileId file_id = {.id = 1};
 
+    UirLowerState *uir_lower = uir_lower_init(&arena);
+
     ParserState *parser = parser_init(&arena, file_id, file, intern_pool);
     while (parser_peek_token(parser, 0).type != Token_Eof) {
         AstNodeId top_decl = parser_parse_toplevel(parser);
-        ast_print_tree(parser->ast, intern_pool, top_decl, 0, true);
+        ast_print_tree(&parser->ast, intern_pool, top_decl, 0, true);
 
-        UirLowerState *uir_lower = uir_lower_init(&arena, parser->ast, file_id, file);
-        UirInstId uir_inst = uir_lower_global(uir_lower, top_decl);
-        uir_print(uir_lower->uir, intern_pool, uir_inst, 0);
+        AstNode node = ast_get_node(&parser->ast, top_decl);
+        switch (node.type) {
+            case Ast_VarDecl:
+            case Ast_ConstDecl: {
+                UirInstId uir_inst = uir_lower_global(uir_lower, file_id, &parser->ast, top_decl);
+                Uir uir = uir_lower_emit_chunk(uir_lower);
+                uir_print(&uir, intern_pool, uir_inst, 0);
 
-        EvalState *eval = eval_state_init(&arena, intern_pool, type_pool, decl_table, fn_table, ns,
-                                          uir_lower->uir, file_id);
-        EvalValue value = eval_inst(eval, uir_inst, EvalMode_Exec);
+                DeclId decl_id =
+                    decl_table_alloc(analysis->decl_table, file_id, uir, ns, uir_inst);
+                AddNameResult name_res = namespace_add_name(ns, node.decl.name, decl_id);
+                if (name_res.redeclared) {
+                    // TODO: report global redeclared error
+                } else {
+                    analysis_queue_decl(analysis, decl_id);
+                }
+            } break;
 
-        printf("\nEval:\n");
-        for (u32 i = 2; i < eval->uir->next_inst; i += 1) {
-            printf("%%%d: ", i);
-            eval_print_value(type_pool, eval->values[i]);
-            printf("\n");
+            default: {
+                debug_assert(false, STR_LIT("only decls are allowed for globals"));
+            } break;
         }
 
-        printf("\nResult: ");
-        eval_print_value(type_pool, value);
-        printf("\n\n");
-        // DeclId decl_id = decl_table_alloc(decl_table, file_id, uir_lower->uir, uir_inst);
-        // analysis_queue_decl(analysis, decl_id);
+        ast_flush(&parser->ast);
     }
-    // while (analysis_process_entry(analysis)) {
-    // }
+
+    analysis_analyze(analysis);
 cleanup:
     if (memory != 0) {
         free(memory);

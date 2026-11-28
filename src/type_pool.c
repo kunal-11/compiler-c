@@ -1,90 +1,3 @@
-typedef enum {
-    Type_None,
-
-    Type_NoReturn,
-    Type_Void,
-    Type_Bool,
-    Type_TypeId,
-
-    Type_CompInt,
-    Type_CompFloat,
-    Type_CompUndef,
-
-    Type_Usize,
-    Type_Isize,
-
-    Type_FirstUserDef,
-} TypeIndex;
-
-typedef struct {
-    u32 id;
-} TypeId;
-
-#define TYPE_ID(TypeIndex) ((TypeId){.id = (TypeIndex)})
-
-typedef struct {
-    u32 id;
-} TypeExtraId;
-
-typedef enum {
-    TypeFormat_Invalid,
-
-    TypeFormat_Global,
-    TypeFormat_FixedInt,
-    TypeFormat_Float,
-    TypeFormat_Ptr,
-    TypeFormat_Fn,
-} TypeFormat;
-
-typedef struct {
-    b8 is_signed;
-    u16 width;
-} FixedInt;
-
-typedef enum {
-    Float_32,
-    Float_64,
-} FloatFormat;
-
-typedef struct {
-    TypeId to;
-} PtrInfo;
-
-typedef struct {
-    TypeExtraId first;
-    u32 count;
-} TypeBlock;
-
-typedef struct {
-    TypeBlock args;
-    TypeId ret;
-} FnTypeInfo;
-
-typedef struct {
-    TypeFormat format;
-    union {
-        TypeId global;
-        FixedInt fixed_int;
-        FloatFormat float_format;
-        PtrInfo ptr_info;
-        FnTypeInfo fn;
-    };
-    TypeId next_in_hash;
-} Type;
-
-typedef struct {
-    TypeId *buckets;
-    u32 bucket_count;
-
-    Type *types;
-    u32 type_count;
-    u32 type_capacity;
-
-    u32 *extras;
-    u32 extra_count;
-    u32 extra_capacity;
-} TypePool;
-
 internal TypeBlock
 type_pool_alloc_block(TypePool *pool, TypeId *ids, u32 count) {
     debug_assert(pool->extra_count + count <= pool->extra_capacity,
@@ -262,7 +175,7 @@ type_pool_get_type_id(TypePool *pool, Type type, TypeExtraId extra_marker) {
 }
 
 internal TypeId
-type_pool_fn_id(TypePool *pool, TypeId *args, u32 arg_count, TypeId ret) {
+type_pool_fn(TypePool *pool, TypeId *args, u32 arg_count, TypeId ret) {
     TypeBlock args_block = type_pool_alloc_block(pool, args, arg_count);
     Type fn_type = {
         .format = TypeFormat_Fn,
